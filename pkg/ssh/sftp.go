@@ -1,6 +1,13 @@
 package ssh
 
-import "github.com/pkg/sftp"
+import (
+	"fmt"
+	"io"
+	"os"
+	"strings"
+
+	"github.com/pkg/sftp"
+)
 
 type Sftp struct {
 	*Terminal
@@ -27,6 +34,54 @@ func (s *Sftp) Close() {
 	s.client.Close()
 }
 
-func (s *Sftp) OpenFile(path string) (*sftp.File, error) {
-	return s.client.Create(path)
+//func (s *Sftp) OpenFile(path string) (*sftp.File, error) {
+//	return s.client.Create(path)
+//}
+
+func (s *Sftp) Mkdir(path string) {
+	s.client.MkdirAll(path)
+}
+
+func (s *Sftp) Stat(path string) (os.FileInfo, error) {
+	return s.client.Stat(path)
+}
+
+func (s *Sftp) ParseRemoteDirectory(path string) string {
+	if strings.HasPrefix(path, "~") {
+		sess, err := s.Terminal.client.NewSession()
+		if err != nil {
+			fmt.Printf("can't open %v: %v", path, err)
+			return path
+		}
+		defer sess.Close()
+		if data, _ := sess.Output(`pwd`); len(data) > 0 {
+			return strings.TrimSpace(string(data)) + path[1:]
+		}
+	}
+	return path
+}
+
+func (s *Sftp) Upload(localPath, remotePath string) {
+	srcFile, err := os.Open(localPath)
+	if err != nil {
+		fmt.Printf("upload %v failed: %v\n", localPath, err)
+		return
+	}
+	defer srcFile.Close()
+
+	remotePath = s.ParseRemoteDirectory(remotePath)
+	dstFile, err := s.client.Create(remotePath)
+	if err != nil {
+		fmt.Printf("upload to %v failed: %v\n", remotePath, err)
+		return
+	}
+	defer dstFile.Close()
+
+	_, err = io.Copy(dstFile, srcFile)
+	if err != nil {
+		fmt.Printf("upload %v failed: %v\n", localPath, err)
+	} else {
+		fmt.Printf("upload %s ok\n", localPath)
+	}
+
 }

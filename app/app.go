@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/signal"
 	"os/user"
+	"path"
+	"strings"
 	"syscall"
 	"time"
 
@@ -47,6 +49,7 @@ type SshInfo struct {
 type App struct {
 	defaultUser string
 	engine      *xorm.Engine
+	sftp        *ssh.Sftp
 }
 
 func (app *App) Init() {
@@ -77,30 +80,28 @@ func (app *App) Init() {
 	app.defaultUser = "root"
 }
 
-func (app *App) getPasswordFromDatabase(cfg *Config) (int64, string) {
+func (app *App) getPasswordFromDatabase(cfg *SshConfig) (int64, string) {
 	info := &SshInfo{
 		UserName: cfg.user,
 		Address:  cfg.target,
 		Port:     cfg.Port,
 	}
 	if has, err := app.engine.Get(info); err != nil {
-		seelog.Errorf("-- %v", err)
 		return 0, ""
 	} else if !has {
-		seelog.Errorf("!has")
 		return 0, ""
 	}
 	return info.Id, info.Password
 }
 
-func (app *App) getPasswordFromStdin(cfg *Config) string {
+func (app *App) getPasswordFromStdin(cfg *SshConfig) string {
 	fmt.Printf("%v@%v's password: ", cfg.user, cfg.target)
 	password, _ := terminal.ReadPassword(int(os.Stdin.Fd()))
 	fmt.Println()
 	return string(password)
 }
 
-func (app *App) savePasswordToDatabase(cfg *Config, uid int64, password string) {
+func (app *App) savePasswordToDatabase(cfg *SshConfig, uid int64, password string) {
 	info := &SshInfo{
 		UserName: cfg.user,
 		Address:  cfg.target,
@@ -119,7 +120,7 @@ func (app *App) savePasswordToDatabase(cfg *Config, uid int64, password string) 
 	}
 }
 
-func (app *App) DoSSH(cfg *Config) {
+func (app *App) DoSSH(cfg *SshConfig) {
 	cfg.user = If(cfg.user == "", app.defaultUser, cfg.user)
 
 	seelog.Infof("ssh -p %d %s@%s", cfg.Port, cfg.user, cfg.target)
@@ -139,6 +140,7 @@ func (app *App) DoSSH(cfg *Config) {
 		}
 
 		app.savePasswordToDatabase(cfg, uid, password)
+		app.engine.Close()
 
 		sigs := make(chan os.Signal, 1)
 		signal.Notify(sigs, syscall.SIGWINCH, syscall.SIGINT, syscall.SIGHUP, syscall.SIGABRT, syscall.SIGTERM)
@@ -161,4 +163,103 @@ func (app *App) DoSSH(cfg *Config) {
 		_ = t.Wait()
 		break
 	}
+}
+
+func (app *App) DoSCP(cfg *ScpConfig) {
+	seelog.Infof("scp -P %d %s@%s [%s <-> %s] %s",
+		cfg.Port, cfg.user, cfg.target, cfg.localFile, cfg.remoteFile,
+		If(cfg.upload, "upload", "download"))
+
+	cfg.user = If(cfg.user == "", app.defaultUser, cfg.user)
+	uid, password := app.getPasswordFromDatabase(&cfg.SshConfig)
+
+	for i := 0; i < 4; i++ {
+		if password == "" {
+			password = app.getPasswordFromStdin(&cfg.SshConfig) // read from stdin
+		}
+
+		sftp := ssh.NewSftp(fmt.Sprintf("%s:%d", cfg.target, cfg.Port), cfg.user,
+			password, "", "")
+		if err := sftp.Dial(); err != nil {
+			password = ""
+			continue
+		}
+		app.savePasswordToDatabase(&cfg.SshConfig, uid, password)
+		app.engine.Close()
+
+		app.sftp = sftp
+		if cfg.upload {
+			app.doUpload(cfg)
+		} else {
+			app.doDownload(cfg)
+		}
+		break
+	}
+}
+
+func (app *App) doUpload(cfg *ScpConfig) {
+	st, err := os.Stat(cfg.localFile)
+	if err != nil {
+		fmt.Printf("file doesn't existed: %v\n", cfg.localFile)
+		return
+	}
+
+	if st.IsDir() && cfg.Dir {
+		app.UploadDirectory(cfg.localFile, cfg.remoteFile)
+	} else if !st.IsDir() {
+		app.UploadFile(cfg.localFile, cfg.remoteFile)
+	} else {
+		fmt.Printf("can't upload directory: %v, please add `-r` flag.\n", cfg.localFile)
+	}
+}
+
+func (app *App) doDownload(cfg *ScpConfig) {
+
+}
+
+func (app *App) UploadDirectory(localFile, remoteFile string) {
+	// target 必须是文件夹
+	remoteFile = app.sftp.ParseRemoteDirectory(remoteFile)
+	st, err := app.sftp.Stat(remoteFile)
+	if err != nil && !errors.Is(err, os.ErrNotExist) { // 非 不存在
+		fmt.Printf("can't stat %v: %v\n", remoteFile, err)
+		return
+	} else if err == nil && !st.IsDir() {
+		fmt.Printf("%v is not directory\n", remoteFile)
+		return
+	}
+
+	remoteFile = path.Join(remoteFile, path.Base(localFile))
+	app.sftp.Mkdir(remoteFile)
+
+	localFiles, err := os.ReadDir(localFile)
+	if err != nil {
+		fmt.Printf("open %v failed: %v\n", localFile, err)
+		return
+	}
+
+	for _, fi := range localFiles {
+		localFilePath := path.Join(localFile, fi.Name())
+		remoteFilePath := path.Join(remoteFile, fi.Name())
+
+		if fi.IsDir() {
+			app.UploadDirectory(localFilePath, remoteFilePath)
+		} else {
+			app.UploadFile(localFilePath, remoteFilePath)
+		}
+	}
+}
+
+func (app *App) UploadFile(localFile, remoteFile string) {
+	st, err := app.sftp.Stat(remoteFile)
+	if err != nil && !errors.Is(err, os.ErrNotExist) { // 非 不存在
+		fmt.Printf("can't stat %v: %v\n", remoteFile, err)
+		return
+	}
+
+	if (st != nil && st.IsDir()) || strings.HasSuffix(remoteFile, "/") {
+		remoteFile = path.Join(remoteFile, path.Base(localFile))
+	}
+
+	app.sftp.Upload(localFile, remoteFile)
 }
