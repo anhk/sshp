@@ -96,6 +96,7 @@ func (app *App) getPasswordFromDatabase(cfg *Config) (int64, string) {
 func (app *App) getPasswordFromStdin(cfg *Config) string {
 	fmt.Printf("%v@%v's password: ", cfg.user, cfg.target)
 	password, _ := terminal.ReadPassword(int(os.Stdin.Fd()))
+	fmt.Println()
 	return string(password)
 }
 
