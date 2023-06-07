@@ -47,7 +47,6 @@ func (t *Terminal) Dial() (err error) {
 	if t.Password != "" {
 		cfg.Auth = append(cfg.Auth, ssh.Password(t.Password))
 	}
-
 	if t.PrivateKey != "" {
 		if t.PrivateKeyPass != "" { // 私钥带密码
 			if s, err := ssh.ParsePrivateKeyWithPassphrase([]byte(t.PrivateKey), []byte(t.PrivateKeyPass)); err == nil {

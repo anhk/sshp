@@ -11,20 +11,14 @@ import (
 	"syscall"
 	"time"
 
-	"xorm.io/xorm/log"
-
-	"github.com/cihub/seelog"
-
-	"golang.org/x/crypto/ssh/terminal"
-
-	"golang.org/x/term"
-
-	"github.com/anhk/sshp/pkg/ssh"
-
 	"github.com/anhk/sshp/pkg/exp"
-
+	"github.com/anhk/sshp/pkg/ssh"
+	"github.com/cihub/seelog"
 	_ "github.com/mattn/go-sqlite3"
+	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 	"xorm.io/xorm"
+	"xorm.io/xorm/log"
 )
 
 type PasswordDict struct {
@@ -50,6 +44,7 @@ type App struct {
 	defaultUser string
 	engine      *xorm.Engine
 	sftp        *ssh.Sftp
+	priKey      string
 }
 
 func (app *App) Init() {
@@ -78,6 +73,7 @@ func (app *App) Init() {
 	}
 	app.engine = engine
 	app.defaultUser = "root"
+	app.loadDefaultPrivateKey()
 }
 
 func (app *App) getPasswordFromDatabase(cfg *SshConfig) (int64, string) {
@@ -122,20 +118,21 @@ func (app *App) savePasswordToDatabase(cfg *SshConfig, uid int64, password strin
 
 func (app *App) DoSSH(cfg *SshConfig) {
 	cfg.user = If(cfg.user == "", app.defaultUser, cfg.user)
-
 	seelog.Infof("ssh -p %d %s@%s", cfg.Port, cfg.user, cfg.target)
 
 	uid, password := app.getPasswordFromDatabase(cfg)
 
 	for i := 0; i < 4; i++ {
-		if password == "" {
+		if password == "" && app.priKey == "" {
 			password = app.getPasswordFromStdin(cfg) // read from stdin
 		}
 
 		t := ssh.NewTerminal(fmt.Sprintf("%s:%d", cfg.target, cfg.Port), cfg.user,
-			password, "", "")
+			password, strings.TrimSpace(app.priKey), "")
+
 		if err := t.Dial(); err != nil {
 			password = ""
+			t.PrivateKey = ""
 			continue
 		}
 
@@ -179,7 +176,7 @@ func (app *App) DoSCP(cfg *ScpConfig) {
 		}
 
 		sftp := ssh.NewSftp(fmt.Sprintf("%s:%d", cfg.target, cfg.Port), cfg.user,
-			password, "", "")
+			password, strings.TrimSpace(app.priKey), "")
 		if err := sftp.Dial(); err != nil {
 			password = ""
 			continue
@@ -262,4 +259,14 @@ func (app *App) UploadFile(localFile, remoteFile string) {
 	}
 
 	app.sftp.Upload(localFile, remoteFile)
+}
+
+func (app *App) loadDefaultPrivateKey() {
+	u, _ := user.Current()
+	rsaFile := fmt.Sprintf("%v/.ssh/id_rsa", u.HomeDir)
+	bytes, err := os.ReadFile(rsaFile)
+	if err != nil {
+		return
+	}
+	app.priKey = string(bytes)
 }
