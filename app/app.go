@@ -270,3 +270,14 @@ func (app *App) loadDefaultPrivateKey() {
 	}
 	app.priKey = string(bytes)
 }
+
+func (app *App) ShowLastLoggedInDevices(n int) {
+	var infoList []SshInfo
+	err := app.engine.Desc("updated_at").Limit(n).Find(&infoList)
+	exp.Throw(err)
+
+	for _, v := range infoList {
+		fmt.Printf("[%s@%s:%d]: %v\n", v.UserName, v.Address, v.Port, v.Password)
+	}
+
+}
