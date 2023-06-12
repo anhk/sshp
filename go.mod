@@ -4,6 +4,7 @@ go 1.20
 
 require (
 	github.com/cihub/seelog v0.0.0-20170130134532-f561c5e57575
+	github.com/jedib0t/go-pretty/v6 v6.4.6
 	github.com/mattn/go-sqlite3 v1.14.17
 	github.com/pkg/sftp v1.13.5
 	github.com/spf13/cobra v0.0.3
@@ -18,10 +19,12 @@ require (
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kr/fs v0.1.0 // indirect
+	github.com/mattn/go-runewidth v0.0.13 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
+	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/spf13/pflag v1.0.1 // indirect
 	github.com/syndtr/goleveldb v1.0.0 // indirect
-	golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e // indirect
+	golang.org/x/sys v0.1.0 // indirect
 	xorm.io/builder v0.3.11-0.20220531020008-1bd24a7dc978 // indirect
 )

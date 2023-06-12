@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"os/user"
 	"path"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/anhk/sshp/pkg/exp"
 	"github.com/anhk/sshp/pkg/ssh"
 	"github.com/cihub/seelog"
+	"github.com/jedib0t/go-pretty/v6/table"
 	_ "github.com/mattn/go-sqlite3"
 	"golang.org/x/crypto/ssh/terminal"
 	"golang.org/x/term"
@@ -133,7 +135,7 @@ func (app *App) DoSSH(cfg *SshConfig) {
 
 		if err := t.Dial(); err != nil {
 			password = ""
-			t.PrivateKey = ""
+			app.priKey = ""
 			continue
 		}
 
@@ -277,7 +279,21 @@ func (app *App) ShowLastLoggedInDevices(n int) {
 	err := app.engine.Desc("updated_at").Limit(n).Find(&infoList)
 	exp.Throw(err)
 
+	t := table.NewWriter()
+	t.SetOutputMirror(os.Stdout)
+	t.AppendHeader(table.Row{"Id", "Tag", "Target", "Password"})
 	for _, v := range infoList {
-		fmt.Printf("[%16s][%s@%s:%d]: %v\n", v.Tag, v.UserName, v.Address, v.Port, v.Password)
+		tableRow := table.Row{}
+		tableRow = append(tableRow, v.Id, v.Tag, fmt.Sprintf("%s@%s:%d", v.UserName, v.Address, v.Port), v.Password)
+		t.AppendRow(tableRow)
 	}
+	t.Render()
+}
+
+func (app *App) DoTag(idStr string, tagName string) {
+	id, err := strconv.Atoi(idStr)
+	exp.Throw(err)
+
+	_, err = app.engine.Update(SshInfo{Tag: tagName}, SshInfo{Id: int64(id)})
+	exp.Throw(err)
 }
