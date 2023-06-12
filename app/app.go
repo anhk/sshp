@@ -21,14 +21,14 @@ import (
 	"xorm.io/xorm/log"
 )
 
-type PasswordDict struct {
-	Id       int64
-	Password string    `xorm:"varchar(256) not null comment('密码')"`
-	LastUsed time.Time `xorm:"timestamp"`
-
-	CreatedAt time.Time `xorm:"created"`
-	UpdatedAt time.Time `xorm:"updated"`
-}
+//type PasswordDict struct {
+//	Id       int64
+//	Password string    `xorm:"varchar(256) not null comment('密码')"`
+//	LastUsed time.Time `xorm:"timestamp"`
+//
+//	CreatedAt time.Time `xorm:"created"`
+//	UpdatedAt time.Time `xorm:"updated"`
+//}
 
 type SshInfo struct {
 	Id        int64
@@ -36,6 +36,7 @@ type SshInfo struct {
 	Password  string    `xorm:"varchar(256) null comment('密码')"`
 	Address   string    `xorm:"varchar(256) not null comment('服务器地址')"`
 	Port      int       `xorm:"int default 22 comment('端口')"`
+	Tag       string    `xorm:"varchar(64) null comment('标签')'"`
 	CreatedAt time.Time `xorm:"created"`
 	UpdatedAt time.Time `xorm:"updated"`
 }
@@ -69,7 +70,7 @@ func (app *App) Init() {
 	engine.SetLogger(logger)
 	if needSync {
 		exp.Throw(engine.Sync2(SshInfo{}))
-		exp.Throw(engine.Sync2(PasswordDict{}))
+		//exp.Throw(engine.Sync2(PasswordDict{}))
 	}
 	app.engine = engine
 	app.defaultUser = "root"
@@ -277,7 +278,6 @@ func (app *App) ShowLastLoggedInDevices(n int) {
 	exp.Throw(err)
 
 	for _, v := range infoList {
-		fmt.Printf("[%s@%s:%d]: %v\n", v.UserName, v.Address, v.Port, v.Password)
+		fmt.Printf("[%16s][%s@%s:%d]: %v\n", v.Tag, v.UserName, v.Address, v.Port, v.Password)
 	}
-
 }
